@@ -1,0 +1,87 @@
+54ddd3	48 89 fe	mov %rdi,%rsi	rsi=2
+54ddd6	bf 02 00 00 00	mov $0x2,%edi	edi=2
+54dddb	e9 a0 fd ff ff	jmpq 0x54db80 <arith_driver>	rip=54db80
+54db80	41 57	push %r15	M8[7fffffffc728]=b630c0 rsp=7fffffffc720
+54db82	41 56	push %r14	M8[7fffffffc720]=2 rsp=7fffffffc718
+54db84	49 89 d6	mov %rdx,%r14	r14=7fffffffc740
+54db87	41 55	push %r13	M8[7fffffffc718]=0 rsp=7fffffffc710
+54db89	41 54	push %r12	M8[7fffffffc710]=208 rsp=7fffffffc708
+54db8b	41 89 fc	mov %edi,%r12d	r12=2
+54db8e	55	push %rbp	M8[7fffffffc708]=7fffffffc800 rsp=7fffffffc700
+54db8f	53	push %rbx	M8[7fffffffc700]=0 rsp=7fffffffc6f8
+54db90	48 83 ec 18	sub $0x18,%rsp	rsp=7fffffffc6e0
+54db94	83 ff 03	cmp $0x3,%edi	
+54db97	0f 86 bb 00 00 00	jbe 0x54dc58 <arith_driver+216>	rip=54dc58
+54dc58	31 ed	xor %ebp,%ebp	ebp=0
+54dc5a	83 ff 01	cmp $0x1,%edi	
+54dc5d	40 0f 97 c5	seta %bpl	bpl=1
+54dc61	e9 47 ff ff ff	jmpq 0x54dbad <arith_driver+45>	rip=54dbad
+54dbad	48 85 f6	test %rsi,%rsi	
+54dbb0	0f 8e 46 01 00 00	jle 0x54dcfc <arith_driver+380>	rip=54dbb6
+54dbb6	48 89 e9	mov %rbp,%rcx	rcx=1
+54dbb9	31 db	xor %ebx,%ebx	ebx=0
+54dbbb	45 31 ff	xor %r15d,%r15d	r15d=0
+54dbbe	45 31 ed	xor %r13d,%r13d	r13d=0
+54dbc1	49 8b 3c de	mov (%r14,%rbx,8),%rdi	rdi=12a174b42
+54dbc5	89 f8	mov %edi,%eax	eax=2a174b42
+54dbc7	89 fa	mov %edi,%edx	edx=2a174b42
+54dbc9	83 e0 07	and $0x7,%eax	eax=2
+54dbcc	83 f8 01	cmp $0x1,%eax	
+54dbcf	74 6f	je 0x54dc40 <arith_driver+192>	rip=54dbd1
+54dbd1	83 e2 03	and $0x3,%edx	edx=2
+54dbd4	83 fa 02	cmp $0x2,%edx	
+54dbd7	74 3b	je 0x54dc14 <arith_driver+148>	rip=54dc14
+54dc14	83 f8 07	cmp $0x7,%eax	
+54dc17	0f 84 33 01 00 00	je 0x54dd50 <arith_driver+464>	rip=54dc1d
+54dc1d	49 89 3c de	mov %rdi,(%r14,%rbx,8)	M8[7fffffffc740]=12a174b42
+54dc21	48 c1 ff 02	sar $0x2,%rdi	rdi=4a85d2d0
+54dc25	41 83 fc 06	cmp $0x6,%r12d	
+54dc29	0f 87 b1 00 00 00	ja 0x54dce0 <arith_driver+352>	
+54dc2f	44 89 e0	mov %r12d,%eax	eax=2
+54dc32	ff 24 c5 e0 dc 5f 00	jmpq *0x5fdce0(,%rax,8)	rip=54dcc0
+54dcc0	48 0f af fd	imul %rbp,%rdi	rdi=4a85d2d0
+54dcc4	0f 90 c0	seto %al	al=0
+54dcc7	48 89 fd	mov %rdi,%rbp	rbp=4a85d2d0
+54dcca	41 09 c7	or %eax,%r15d	r15d=0
+54dccd	eb a9	jmp 0x54dc78 <arith_driver+248>	rip=54dc78
+54dc78	48 83 c3 01	add $0x1,%rbx	rbx=1
+54dc7c	48 39 de	cmp %rbx,%rsi	
+54dc7f	74 7b	je 0x54dcfc <arith_driver+380>	
+54dc81	45 84 ff	test %r15b,%r15b	
+54dc84	48 0f 44 cd	cmove %rbp,%rcx	rcx=4a85d2d0
+54dc88	4c 0f 44 eb	cmove %rbx,%r13	r13=1
+54dc8c	e9 30 ff ff ff	jmpq 0x54dbc1 <arith_driver+65>	rip=54dbc1
+54dbc1	49 8b 3c de	mov (%r14,%rbx,8),%rdi	rdi=fffffffe484b9b06
+54dbc5	89 f8	mov %edi,%eax	eax=484b9b06
+54dbc7	89 fa	mov %edi,%edx	edx=484b9b06
+54dbc9	83 e0 07	and $0x7,%eax	eax=6
+54dbcc	83 f8 01	cmp $0x1,%eax	
+54dbcf	74 6f	je 0x54dc40 <arith_driver+192>	
+54dbd1	83 e2 03	and $0x3,%edx	edx=2
+54dbd4	83 fa 02	cmp $0x2,%edx	
+54dbd7	74 3b	je 0x54dc14 <arith_driver+148>	rip=54dc14
+54dc14	83 f8 07	cmp $0x7,%eax	
+54dc17	0f 84 33 01 00 00	je 0x54dd50 <arith_driver+464>	
+54dc1d	49 89 3c de	mov %rdi,(%r14,%rbx,8)	M8[7fffffffc748]=fffffffe484b9b06
+54dc21	48 c1 ff 02	sar $0x2,%rdi	rdi=ffffffff9212e6c1
+54dc25	41 83 fc 06	cmp $0x6,%r12d	
+54dc29	0f 87 b1 00 00 00	ja 0x54dce0 <arith_driver+352>	
+54dc2f	44 89 e0	mov %r12d,%eax	eax=2
+54dc32	ff 24 c5 e0 dc 5f 00	jmpq *0x5fdce0(,%rax,8)	rip=54dcc0
+54dcc0	48 0f af fd	imul %rbp,%rdi	rdi=dfffffffdceaced0
+54dcc4	0f 90 c0	seto %al	al=0
+54dcc7	48 89 fd	mov %rdi,%rbp	rbp=dfffffffdceaced0
+54dcca	41 09 c7	or %eax,%r15d	r15d=0
+54dccd	eb a9	jmp 0x54dc78 <arith_driver+248>	rip=54dc78
+54dc78	48 83 c3 01	add $0x1,%rbx	rbx=2
+54dc7c	48 39 de	cmp %rbx,%rsi	
+54dc7f	74 7b	je 0x54dcfc <arith_driver+380>	rip=54dcfc
+54dcfc	48 8d 04 ad 02 00 00 00	lea 0x2(,%rbp,4),%rax	rax=7fffffff73ab3b42
+54dd04	48 83 c4 18	add $0x18,%rsp	rsp=7fffffffc6f8
+54dd08	5b	pop %rbx	rbx=0 rsp=7fffffffc700
+54dd09	5d	pop %rbp	rbp=7fffffffc800 rsp=7fffffffc700
+54dd0a	41 5c	pop %r12	r12=208 rsp=7fffffffc710
+54dd0c	41 5d	pop %r13	r13=0 rsp=7fffffffc718
+54dd0e	41 5e	pop %r14	r14=2 rsp=7fffffffc720
+54dd10	41 5f	pop %r15	r15=b630c0 rsp=7fffffffc728
+54dd12	c3	retq	rip=564b22 rsp=7fffffffc730

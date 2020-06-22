@@ -1,0 +1,87 @@
+rsi=2
+edi=2
+rip=54db80
+M8[7fffffffc728]=b630c0 rsp=7fffffffc720
+M8[7fffffffc720]=2 rsp=7fffffffc718
+r14=7fffffffc740
+M8[7fffffffc718]=0 rsp=7fffffffc710
+M8[7fffffffc710]=208 rsp=7fffffffc708
+r12=2
+M8[7fffffffc708]=7fffffffc800 rsp=7fffffffc700
+M8[7fffffffc700]=0 rsp=7fffffffc6f8
+rsp=7fffffffc6e0
+
+rip=54dc58
+ebp=0
+
+bpl=1
+rip=54dbad
+
+rip=54dbb6
+rcx=1
+ebx=0
+r15d=0
+r13d=0
+rdi=12a174b42
+eax=2a174b42
+edx=2a174b42
+eax=2
+
+rip=54dbd1
+edx=2
+
+rip=54dc14
+
+rip=54dc1d
+M8[7fffffffc740]=12a174b42
+rdi=4a85d2d0
+
+
+eax=2
+rip=54dcc0
+rdi=4a85d2d0
+al=0
+rbp=4a85d2d0
+r15d=0
+rip=54dc78
+rbx=1
+
+
+
+rcx=4a85d2d0
+r13=1
+rip=54dbc1
+rdi=fffffffe484b9b06
+eax=484b9b06
+edx=484b9b06
+eax=6
+
+
+edx=2
+
+rip=54dc14
+
+
+M8[7fffffffc748]=fffffffe484b9b06
+rdi=ffffffff9212e6c1
+
+
+eax=2
+rip=54dcc0
+rdi=dfffffffdceaced0
+al=0
+rbp=dfffffffdceaced0
+r15d=0
+rip=54dc78
+rbx=2
+
+rip=54dcfc
+rax=7fffffff73ab3b42
+rsp=7fffffffc6f8
+rbx=0 rsp=7fffffffc700
+rbp=7fffffffc800 rsp=7fffffffc700
+r12=208 rsp=7fffffffc710
+r13=0 rsp=7fffffffc718
+r14=2 rsp=7fffffffc720
+r15=b630c0 rsp=7fffffffc728
+rip=564b22 rsp=7fffffffc730

@@ -1,0 +1,323 @@
+Jonathan Hui
+905-203-286
+CS33
+Eggert
+Winter 2020
+OpenMP Notebook
+
+First, I downloaded the "materials" zip from the webpage and moved it onto the Linux servers. Then,
+I ran:
+
+tar -xvf openmplab.tgz
+
+which created a directory openmplab/
+
+I then made seq to get the baseline file up and running, also running it once to see what I had to
+start with:
+
+bash-4.2$ make seq
+gcc -o seq -O3 filter.c main.c func.c util.c -lm
+bash-4.2$ ./seq
+FUNC TIME : 0.491169
+TOTAL TIME : 2.138648
+
+I first evaluated the runtimes of the functions by:
+
+bash-4.2$ make GPROF=1 seq
+gcc -o seq -O2 -pg filter.c main.c func.c util.c -lm
+bash-4.2$ gprof ./seq gmon.out > testout.txt
+bash-4.2$ ls
+correct.txt  filter  filter.c  func.c  func.h  gmon.out  main.c  Makefile  omp  output.txt  seed.txt  seq  testout.txt  util.c  util.h
+bash-4.2$ emacs testout.txt
+
+which gave me this info:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total           
+ time   seconds   seconds    calls  ms/call  ms/call  name    
+ 48.28      0.27     0.27       15    18.02    24.84  func1
+ 16.09      0.36     0.09  5177344     0.00     0.00  rand2
+ 15.20      0.45     0.09 67829777     0.00     0.00  rand1
+  3.58      0.47     0.02   491520     0.00     0.00  findIndexBin
+  3.58      0.49     0.02        1    20.03    93.04  addSeed
+  3.58      0.51     0.02        1    20.03    20.03  imdilateDisk
+  3.58      0.53     0.02                             sequence
+  1.79      0.54     0.01       15     0.67     0.67  func2
+  1.79      0.55     0.01       15     0.67     2.00  func5
+  1.79      0.56     0.01        2     5.01     5.01  init
+  0.89      0.56     0.01        1     5.01     5.01  round
+  0.00      0.56     0.00       16     0.00     0.00  dilateMatrix
+  0.00      0.56     0.00       15     0.00     0.00  func3
+  0.00      0.56     0.00       15     0.00     0.00  func4
+  0.00      0.56     0.00        2     0.00     0.00  get_time
+  0.00      0.56     0.00        1     0.00     0.00  fillMatrix
+  0.00      0.56     0.00        1     0.00     0.00  func0
+  0.00      0.56     0.00        1     0.00     0.00  getNeighbors
+
+
+Naturally, I went ahead and looked at func1 first!
+
+=== func1 ===
+== Phase 1 ==
+After reading the spec a bit more, I opened the only file that we were to edit: func.c In
+discussion we learned about applying openmp to a for loop, so I went ahead and wrote a couple
+system directives in func1 preceding each i-loop:
+
+#pragma omp parallel for num_threads(4)
+
+I arrived at "4" after running the resulting filter executable:
+
+bash-4.2$ make check
+gcc -o omp -O3 -fopenmp filter.c main.c func.c util.c -lm
+cp omp filter
+./filter
+FUNC TIME : 0.153351
+TOTAL TIME : 1.819884
+diff --brief correct.txt output.txt
+
+This is good progress with the functions, but the total time is rather abysmal still. I checked
+gmon.out:
+
+...
+ %   cumulative   self              self     total
+ time   seconds   seconds    calls  ms/call  ms/call  name
+ 50.07      0.28     0.28                             filter
+ 17.88      0.38     0.10 73007124     0.00     0.00  func1
+ 16.09      0.47     0.09        2    45.06    45.06  func2
+  3.58      0.49     0.02   491520     0.00     0.00  fillMatrix
+...
+
+and saw that I made significant progress on func1. So, I shifted my attention to func2.
+
+=== func2 ===
+== Phase 1 ==
+I saw that the second for-loop in func2 actually was an accumulating operation, so I performed some
+"strength reduction:
+
+#pragma omp parallel for reduction(+:sumWeights)
+
+This did not significantly change the overall runtime, but it decreased func2's presence overall:
+
+...
+ %   cumulative   self              self     total
+ time   seconds   seconds    calls  ms/call  ms/call  name
+...
+  5.36      0.54     0.03        3    10.01    34.35  func2
+...
+
+I also went ahead and added this to the first and third for-loops:
+
+#pragma omp parallel for num_threads(4)
+
+I recompiled and:
+
+bash-4.2$ ./filter
+FUNC TIME : 0.140722
+TOTAL TIME : 1.872109
+diff --brief correct.txt output.txt
+
+.49/.14 = 3.5, so at this point I had accomplished the target optimization. For documentation
+purposes, I went ahead and gprof'd the state of the program as-is:
+
+bash-4.2$ make GPROF=1
+gcc -o omp -O2 -pg -fopenmp filter.c main.c func.c util.c -lm
+cp omp filter
+
+The gmon.out file provided this information:
+...
+ %   cumulative   self              self     total
+ time   seconds   seconds    calls  ms/call  ms/call  name
+ 73.31      0.41     0.41  4194307     0.00     0.00  filter
+ 10.73      0.47     0.06                             func0
+  3.58      0.49     0.02        1    20.03    20.03  rand2
+  3.58      0.51     0.02                             fillMatrix
+  3.58      0.53     0.02                             func2
+  3.58      0.55     0.02                             imdilateDisk
+  1.79      0.56     0.01        3     3.34     3.34  func1
+  0.00      0.56     0.00   491520     0.00     0.00  dilateMatrix
+  0.00      0.56     0.00       16     0.00     0.00  func5
+  0.00      0.56     0.00        1     0.00     0.00  func3
+  0.00      0.56     0.00        1     0.00     0.00  init
+...
+
+
+=== func0 ===
+== Phase 1 ==
+Just to cut down on the 10% runtime, I added:
+
+#pragma omp parallel for num_threads(4)
+
+to the for loop in func0, leaving me with a better distribution:
+
+ %   cumulative   self              self     total
+ time   seconds   seconds    calls  ms/call  ms/call  name
+ 84.04      0.47     0.47  4194309     0.00     0.00  filter
+  3.58      0.49     0.02   491520     0.00     0.00  dilateMatrix
+  3.58      0.51     0.02        1    20.03   510.69  func1
+  3.58      0.53     0.02        1    20.03    20.03  rand2
+  3.58      0.55     0.02                             fillMatrix
+  1.79      0.56     0.01                             func0
+  0.00      0.56     0.00       16     0.00     0.00  func4
+  0.00      0.56     0.00        1     0.00     0.00  func2
+  0.00      0.56     0.00        1     0.00     0.00  rand1
+
+
+After doing a bit of online reading about how OpemMP chooses the default number of threads, I went
+ahead and deleted all the "num_threads(4)" options because my default, OpenMP apparently will
+choose the optimum number based on the processor cores, etc.
+^^^ *** NOTE: THIS IS INCORRECT... SEE SECTION "Transitioning Servers For Performance"
+
+=== func4 ===
+== Phase 1 ==
+Even though func4 does not take a large chunk of the runtime, I went ahead and added:
+
+#pragma omp parallel for
+
+preceding the for-loop to parallelize it.
+
+=== func5 ===
+== Phase 1 ==
+Even though func4 does not take a large chunk of the runtime, I went ahead and added:
+
+#pragma omp parallel for
+
+preceding the second for-loop to parallelize it.
+
+=== func3 ===
+== Phase 1 ==
+Even though func3 does not take a large chunk of the runtime, I went ahead and added:
+
+#pragma omp parallel for reduction(+:estimate_x,estimate_y)
+
+preceding the second for-loop to employ strength reduction.
+
+I did another gprof:
+
+  %   cumulative   self              self     total
+ time   seconds   seconds    calls  ms/call  ms/call  name
+ 45.95      0.28     0.28                             filter
+ 22.15      0.42     0.14  9737925     0.00     0.00  round
+ 14.77      0.51     0.09  4338683     0.00     0.00  rand2
+  8.21      0.56     0.05        1    50.05   137.15  addSeed
+  3.28      0.58     0.02        2    10.01    10.01  init
+  3.28      0.60     0.02                             sequence
+  1.64      0.61     0.01        1    10.01    10.01  imdilateDisk
+  0.82      0.61     0.01        1     5.01     5.01  elapsed_time
+  0.00      0.61     0.00   491520     0.00     0.00  findIndexBin
+  0.00      0.61     0.00       16     0.00     0.00  dilateMatrix
+  0.00      0.61     0.00       15     0.00     0.00  func1
+  0.00      0.61     0.00       15     0.00     0.00  func2
+  0.00      0.61     0.00       15     0.00     0.00  func3
+  0.00      0.61     0.00       15     0.00     0.00  func4
+  0.00      0.61     0.00       15     0.00     0.00  func5
+  0.00      0.61     0.00       15     0.00     0.00  rand1
+  0.00      0.61     0.00        2     0.00     0.00  get_time
+  0.00      0.61     0.00        1     0.00     0.00  fillMatrix
+  0.00      0.61     0.00        1     0.00     0.00  func0
+  0.00      0.61     0.00        1     0.00     0.00  getNeighbors
+
+
+Clearly, the functions are not a significant chunk of the run time any more!
+
+=== memcheck ===
+At this point, I wanted to make sure that everything was in order if I had to turn the project in
+as-is, since I had basically reached the 3.5x speedup target and am more restricted by inherent
+bottlenecks rather than parallelizable sections of code in the funcs. So, I ran:
+
+bash-4.2$ make MTRACE=1
+gcc -o omp -O3 -DMTRACE -fopenmp filter.c main.c func.c util.c -lm
+cp omp filter
+bash-4.2$ ./filter
+FUNC TIME : 0.139334
+TOTAL TIME : 1.912898
+bash-4.2$ make checkmem
+mtrace filter mtrace.out || true
+
+Memory not freed:
+-----------------
+           Address     Size     Caller
+0x0000000000f100d0    0x8a0  at 0x7fdcff4be7f9
+0x0000000000f10980     0xc0  at 0x7fdcff4be7f9
+0x0000000000f10a50     0x28  at 0x7fdcff4be849
+0x0000000000f10a80    0x240  at 0x7fdcff9ef755
+0x0000000000f10cd0    0x240  at 0x7fdcff9ef755
+0x0000000000f10f20    0x240  at 0x7fdcff9ef755
+
+
+Although this may seem bad, it seems that these 6 "leaks" are in fact just inherent residue from
+the OpenMP library that has no point-deduction penalty. I am sure that these are specifically from
+the OpenMP because the program itself does no alloc-ing of itself.
+
+=== Transitioning Servers For Performance ===
+To get final numbers regarding runtimes, I went onto lnxsrv06 to test there but found quickly that
+the runtimes I got on lnxsrv10 did not match up at all. I then had to make the following tweaks:
+
+I realized very quickly that if I specified the number of threads in each #pragma omp directive,
+it would run faster. I had the idea that perhaps, on lnxsrv10, this optimization was done
+automatically, and that seems to actually be the case.
+
+So, as a preprocessor directive, I added:
+
+#define N_THREADS 4
+
+and appended:
+
+num_threads(N_THREADS)
+
+to *every* single "#pragma omp parallel" statement made thus far.
+
+After iteratively increasing N_THREADS, I found that it caps at "65" before barking at me:
+
+#define N_THREADS 65
+
+which likely has to do with the max hyperthreads on lnxsrv06. Of note, I tried looking for a way
+to set the threadcount with only one command/line of code at the beginning but was unable to find
+a way to. The omp_set_num_threads() function is a runtime command, and using this would render the
+non-paralleized version "seq" to be un-compilable. Thus, adding the num_threads() to each statement
+proved to be most effective.
+
+With this set, I was able to get:
+
+bash-4.2$ make check
+gcc -o omp -O3 -fopenmp filter.c main.c func.c util.c -lm
+cp omp filter
+./filter
+FUNC TIME : 0.136629
+TOTAL TIME : 2.146966
+diff --brief correct.txt output.txt
+bash-4.2$ 
+
+
+On lnxsrv06, the non-paralleized version of the program shows:
+
+bash-4.2$ make seq
+gcc -o seq -O3 filter.c main.c func.c util.c -lm
+bash-4.2$ ./seq
+FUNC TIME : 0.710780
+TOTAL TIME : 2.582117
+
+This comes out to a final speedup of ~ .70/.14 = 5
+
+=== Transitioning back to check for non-paralleized memory leaks + SURPRISE TWEAK ===
+As a final check, I wanted to make sure that the "seq" variant did not produce memory leaks, since
+non-omp leaks would still be penalized. So, I ssh'd into lnxsrv10 to ensure this:
+
+bash-4.2$ make seq MTRACE=1
+gcc -o seq -O3 -DMTRACE filter.c main.c func.c util.c -lm
+bash-4.2$ ./seq
+FUNC TIME : 0.489426
+TOTAL TIME : 2.140858
+bash-4.2$ make checkmem
+mtrace filter mtrace.out || true
+No memory leaks.
+
+Out of curiosity, I wanted to see how this performed on lnxsrv10 with the tweaks and found that
+65 threads caused it to bark at me, so I incrementally decrease the thread count until I arrived at
+
+#define N_THREADS 47
+
+This is a rather odd number, but it works on BOTH lnxsrv06 and lnxsrv10, giving ~65-thread runtimes
+on 06 and allowing compilation on 10.
+
+At this point, I decided that these optimizations met the project spec well enough and didn't crash
+on either server, so I stopped finding any more tweaks.

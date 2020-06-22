@@ -1,0 +1,73 @@
+Jonathan Hui
+905-203-286
+CS33
+Eggert
+Winter 2020
+PExEx Lab Notebook
+
+=== Gather Instruction Traces ===
+I first ran the command exactly as noted in the spec:
+
+emacs -Q -batch -eval '(print (* 1250284240 -1844255039))'
+
+which outputted: 2305843008625102544
+
+I then made a bash script to automate the recording process, as laid out by
+Utsav, the LA:
+https://piazza.com/class/k575m4g7sfsls?cid=57
+
+I went ahead and ran everything up until the formatting step, since I knew that
+at the moment, I didn't have the right commands/counts that were asked for: I
+realized that the script wouldn't really be useful unless I had a ballpark idea
+of how many times I needed to run stepi. So, I ran:
+gdb ~eggert/bin64/bin/emacs-26.3
+(gdb) break Ftimes
+(gdb) run -Q -batch -eval '(print (* 1250284240 -1844255039))'
+
+The breakpoint was hit at line 2950 in data.c.  I ran to visualize:
+(gdb) layout asm
+(gdb) layout regs
+
+At this point, since Utsav's script only limited the automation to the first 3
+columns, I started a separate text file to note what I needed to write in the
+4th column. I started stepping and recording down changes in memory and reg's
+until I reached the first return instruction, which occured after 87 stepi's.
+
+I then went back into the bash script and edited the loop to only execute 87
+stepi's and nothing else (no nexti's). After reuploading this modified script,
+I ran:
+
+./gen-commands.sh > gdb-commands.txt
+rm -f gdb.txt 
+gdb ~eggert/bin64/bin/emacs-26.3 -x gdb-commands.txt
+grep "=>.*" gdb.txt | #Take lines which start with =>
+sed "s/=> 0x[0]*\(.*\)/\1/p" | # Start lines with address expect excess zeros
+sed "s/\([0-9abcdef]\)\s<[^>]*>:\s\([0-9abcdef ]*\)\s\([^\t]*\)/\1\t\2\t\3/p" 
+    > gdb-formatted.txt # Do magic
+uniq gdb-formatted.txt | sed 's/  */ /g' > trace.tr
+
+I opened up trace.tr with emacs, seeing that it had 87 lines! Cool! It matches
+my results! I downloaded the file locally to save my work but used this
+command to horizontally merge the files to create the final version of trace.tr
+
+paste trace.tr mem_changelog.txt > finaltrace.tr
+
+=== Examine Integer Overflow Handling ===
+I created a new directory to hold the stuff associated with this part. I ran:
+emacs testovf.c
+
+and copied the function as specified:
+_Bool
+testovf (long n)
+{
+  return n + 9223372036854775807 < n;
+}
+
+I then saved the file, running the three lines as in the spec and looking
+at differences in the assembly:
+
+gcc -O2 testovf.c -o test1
+gcc -O2 -fwrapv -o test2
+gcc -O2 -fsanitize=undefined -o test3
+
+I was able to view the assembly by running objdump -d [exec_name].

@@ -1,0 +1,45 @@
+1)
+xor	%eax,%eax
+retq
+nopw %cs:0x0(%rax,%rax,1)
+nopl (%rax)
+
+2)
+movabs $0x7fffffffffffffff,%rax
+add %rdi,%rax
+cmp %rdi,%rax
+setl %al
+retq
+nopw cs:0x0(%rax,%rax,1)
+xchg %ax,%ax
+
+3)
+movabs $0x7fffffffffffffff,%rdx
+push %rbp
+mov %rdi,%rbp
+push %rbx
+mov %rdi,%rbx
+sub $0x8,%rsp
+add %rdx,%rbp
+jo 400608 <testovf+0x28>
+cmp %rbx,%rbp
+setl %al
+add $0x8,%rsp
+pop %rbx
+pop %rbp
+retq
+mov %rdi,%rsi
+mov $0x601040,%edi
+callq 4004f0 <__ubsan_handle_add_overflow@plt>
+
+Summary:
+Basically these differ by how arithmetic is handled:
+- In case 1, it seems to recognize that any integer added to that big thing
+will cause positive overflow, so by only taking the representable bits, which
+would all be 0, n + 0...0 cannot possibly be < n, so it always returns false.
+- In case 2, the assembly literally adds the most positive 64-bit signed
+integer to the input, and if the input is less than the sum, the bottom 8 bits
+are set to 1, which appears to compensate for negative overflow.
+- In case 3, the highlight is that there is a jump instruction that happens in
+case of overflow, where an entirely different function to specifically handle
+overflow is called.

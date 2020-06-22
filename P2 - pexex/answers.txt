@@ -1,0 +1,27 @@
+1) The trace did not produce the right result because of overflow, and it would
+make sense that this imul operation:
+54dcc0	48 0f af fd	imul %rbp,%rdi	rdi=dfffffffdceaced0
+would produce truncated results, finally
+culminating in this instruction storing a modulo-2^62-correct answer:
+54dcfc	48 8d 04 ad 02 00 00 00	lea 0x2(,%rbp,4),%rax	rax=7fffffff73ab3b42
+
+2) That number is -2^61, the smallest integer that Emacs Lisp can handle on a
+64-bit platform. "most-negative-fixnum" is actually noted in data.c and has the
+value "Vmost_negative_fixnum". This is set to MOST_NEGATIVE_FIXNUM, which is
+noted in lisp.h as (-1 - MOST_POSITIVE_FIXNUM). MOST_POSITIVE_FIXNUM is = to
+EMACS_INT_MAX >> INTTYPEBITS, where INTTYPEBITS = GCTYPEBITS - 1 and GCTYPEBITS
+is set to 3. Based on the #ifndef statements that set EMACS_INT_MAX, it seems
+that since pointers to ints are 8 bytes on these machines, EMACS_INT_MAX is
+also 8 bytes long, and it's set to LONG_MAX, which is 64-bit 01...1. By
+right-shifting this 2 bits, it's 0001...1, and 1-(this value) is 1110...0,
+evaluating to the number in the spec, -2305843009213693952.
+
+3) It is known that Emacs Lisp does not check for overflow, so in such a huge
+multiplication operation, likely only the bottom 62 bits of the product 
+are able to be saved. Thus, since most-positive-fixnum is 2^61 - 1, the 2^0
+bit in the product will be 1 which likely is why it only outputs 1.
+
+4) If this was compiled with -fwrapv, this would definitely cause problems
+because rather than being right modulo 2^62, arithmetic such as the
+multiplication earlier would just end up in the negative region due to the
+wrapping around, which is even worse!

